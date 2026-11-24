@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:myportofolio_mobile/models/experience.dart';
+import 'package:myportofolio_mobile/services/api_client.dart';
+import 'package:myportofolio_mobile/services/auth_state.dart';
+import 'package:myportofolio_mobile/widgets/auth_guard.dart';
 import 'package:myportofolio_mobile/widgets/left_drawer.dart';
+import 'package:provider/provider.dart';
 
 class ExperienceForm extends StatefulWidget {
   const ExperienceForm({super.key});
@@ -21,6 +26,111 @@ class _ExperienceFormPageState extends State<ExperienceForm> {
   DateTime? _endedAt;
 
   String _skills = "";
+  bool _isSubmitting = false;
+
+  Future<void> _submit() async {
+    if (_isSubmitting || !_formKey.currentState!.validate()) return;
+
+    final experience = Experience(
+      title: _title,
+      organization: _organization,
+      orgLogo: _orgLogo,
+      location: _location,
+      description: _description,
+      startedAt: _startedAt!,
+      endedAt: _endedAt,
+      skills: _skills,
+    );
+
+    setState(() => _isSubmitting = true);
+    try {
+      if (!await ensureLoggedIn(context) || !mounted) return;
+
+      final auth = context.read<AuthState>();
+      final token = auth.token;
+      if (token == null) return;
+
+      try {
+        await context.read<ApiClient>().createExperience(
+          experience,
+          token: token,
+        );
+      } on ApiException catch (error) {
+        if (!mounted) return;
+        if (error.statusCode == 401) {
+          await auth.logout();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sesi berakhir. Silakan login lagi.')),
+          );
+          await ensureLoggedIn(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Gagal menyimpan pengalaman (${error.statusCode}).',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      await _showSavedExperience(experience);
+      if (!mounted) return;
+
+      _formKey.currentState!.reset();
+      setState(() {
+        _title = "";
+        _organization = "";
+        _orgLogo = "";
+        _location = "";
+        _description = "";
+        _skills = "";
+        _startedAt = null;
+        _endedAt = null;
+      });
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _showSavedExperience(Experience experience) async {
+    String displayDate(DateTime date) =>
+        '${date.day}/${date.month}/${date.year}';
+    final endedAt = experience.endedAt;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ringkasan Pengalaman'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Pengalaman berhasil disimpan.'),
+              Text('Nama Pengalaman: ${experience.title}'),
+              Text('Organisasi: ${experience.organization}'),
+              Text('Organization logo: ${experience.orgLogo}'),
+              Text('Lokasi: ${experience.location}'),
+              Text('Deskripsi: ${experience.description}'),
+              Text('Tanggal Mulai: ${displayDate(experience.startedAt)}'),
+              Text(
+                'Tanggal Selesai: ${endedAt == null ? "Masih berlangsung" : displayDate(endedAt)}',
+              ),
+              Text('Skills: ${experience.skills}'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 
   String? _validateText(String? value, String label, {int? maxLength}) {
     final text = value?.trim() ?? "";
@@ -274,59 +384,10 @@ class _ExperienceFormPageState extends State<ExperienceForm> {
                     style: ButtonStyle(
                       backgroundColor: WidgetStateProperty.all(Colors.indigo),
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text('Ringkasan Pengalaman'),
-                              content: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Nama Pengalaman: $_title'),
-                                    Text('Organisasi: $_organization'),
-                                    Text('Organization logo: $_orgLogo'),
-                                    Text('Lokasi: $_location'),
-                                    Text('Deskripsi: $_description'),
-                                    Text(
-                                      'Tanggal Mulai: ${_startedAt == null ? "-" : "${_startedAt!.day}/${_startedAt!.month}/${_startedAt!.year}"}',
-                                    ),
-                                    Text(
-                                      'Tanggal Selesai: ${_endedAt == null ? "Masih berlangsung" : "${_endedAt!.day}/${_endedAt!.month}/${_endedAt!.year}"}',
-                                    ),
-                                    Text('Skills: $_skills'),
-                                  ],
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  child: const Text('OK'),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _formKey.currentState!.reset();
-                                    setState(() {
-                                      _title = "";
-                                      _organization = "";
-                                      _orgLogo = "";
-                                      _location = "";
-                                      _description = "";
-                                      _skills = "";
-                                      _startedAt = null;
-                                      _endedAt = null;
-                                    });
-                                  },
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      }
-                    },
-                    child: const Text(
-                      "Simpan",
-                      style: TextStyle(color: Colors.white),
+                    onPressed: _isSubmitting ? null : _submit,
+                    child: Text(
+                      _isSubmitting ? 'Menyimpan...' : 'Simpan',
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                 ),

@@ -1,13 +1,17 @@
-import 'package:myportofolio_mobile/screens/achievement_form.dart';
-import 'package:myportofolio_mobile/screens/menu.dart';
-import 'package:myportofolio_mobile/screens/experience_form.dart';
 import 'package:flutter/material.dart';
+import 'package:myportofolio_mobile/screens/achievement_form.dart';
+import 'package:myportofolio_mobile/screens/experience_form.dart';
+import 'package:myportofolio_mobile/screens/menu.dart';
+import 'package:myportofolio_mobile/services/auth_state.dart';
+import 'package:myportofolio_mobile/widgets/auth_guard.dart';
+import 'package:provider/provider.dart';
 
 class LeftDrawer extends StatelessWidget {
   const LeftDrawer({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final isLoggedIn = context.watch<AuthState>().isLoggedIn;
     return Drawer(
       child: ListView(
         children: [
@@ -45,7 +49,9 @@ class LeftDrawer extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
             title: const Text('Add Experience'),
-            onTap: () {
+            onTap: () async {
+              if (!await ensureLoggedIn(context) || !context.mounted) return;
+              Scaffold.of(context).closeDrawer();
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const ExperienceForm()),
@@ -55,13 +61,29 @@ class LeftDrawer extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.add_circle_outline),
             title: const Text('Add Achievement'),
-            onTap: () {
+            onTap: () async {
+              if (!await ensureLoggedIn(context) || !context.mounted) return;
+              Scaffold.of(context).closeDrawer();
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => const AchievementForm()),
+                MaterialPageRoute(
+                  builder: (context) => const AchievementForm(),
+                ),
               );
             },
-          )
+          ),
+          if (isLoggedIn)
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Logout'),
+              onTap: () => context.read<AuthState>().logout(),
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: const Text('Login'),
+              onTap: () => ensureLoggedIn(context),
+            ),
         ],
       ),
     );
